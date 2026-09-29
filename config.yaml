@@ -1,0 +1,3 @@
+llm:
+ provider: openai        # openai | anthropic
+ model: gpt-5.5
