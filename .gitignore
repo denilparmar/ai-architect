@@ -10,3 +10,7 @@ wheels/
 .venv
 
 .env
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
