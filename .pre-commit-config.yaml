@@ -1,7 +1,16 @@
 repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  # Ruff version.
-  rev: v0.16.9
-  hooks:
-    # Run the formatter.
-    - id: ruff-format
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9  # keep in sync with ruff in uv.lock
+    hooks:
+      - id: ruff-check  # lint; autofixes what it can (e.g. import order)
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run --no-sync mypy .
+        language: system
+        types: [python]
+        pass_filenames: false  # check the whole project, same as CI

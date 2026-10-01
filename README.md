@@ -14,6 +14,7 @@ Describe a system in plain English and let an AI agent design it for you. Built 
 ```bash
 uv sync
 cp .env.example .env   # then fill in your keys
+uv run pre-commit install   # lint, format and type-check on every commit
 ```
 
 `.env`:
