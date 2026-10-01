@@ -12,7 +12,9 @@ def get_llm():
 
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
+
         return ChatAnthropic(model=model)
 
     from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(model=model)

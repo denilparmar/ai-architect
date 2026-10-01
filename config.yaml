@@ -2,8 +2,7 @@ llm:
  provider: anthropic        # openai | anthropic
  model: claude-sonnet-4-5
 
-memory:
-  DATABASE_URL: postgresql://postgres:denil%4029099@db.utachjnefbqvhkukykfs.supabase.co:5432/postgres
+memory: 
   summarize_at_tokens: 4000
   keep_last_messages: 20
 
