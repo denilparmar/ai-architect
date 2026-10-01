@@ -4,40 +4,41 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
-env:
-  PYTHON_VERSION: "3.12"
-  UV_VERSION: "0.12.20"
-
 jobs:
-  lint:
-    name: Lint
+  checks:
+    name: Lint & type check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Python version comes from .python-version
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: ${{ env.UV_VERSION }}
-          python-version: ${{ env.PYTHON_VERSION }}
+          version: "0.12.20"
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --locked --dev
+        id: sync
+        run: uv sync --locked
 
+      # `!cancelled()` runs every check even if an earlier one fails, so all problems show up in one run
       - name: Ruff lint
-        run: uv run ruff check --output-format=github .
+        run: uv run --no-sync ruff check --output-format=github .
 
       - name: Ruff format
-        run: uv run ruff format --check .
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        run: uv run --no-sync ruff format --check .
 
       - name: Mypy
-        run: uv run mypy .
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        run: uv run --no-sync mypy .
