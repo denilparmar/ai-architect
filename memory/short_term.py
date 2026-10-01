@@ -1,6 +1,8 @@
 from langchain.agents.middleware import SummarizationMiddleware
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres import PostgresSaver
-from psycopg.rows import dict_row
+from psycopg import Connection
+from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
 
 from config import config
@@ -20,6 +22,7 @@ class ShortTermMemory:
             conninfo=db_uri,
             max_size=max_pool_size,
             open=True,
+            connection_class=Connection[DictRow],
             kwargs={
                 "autocommit": True,  # required by PostgresSaver
                 "prepare_threshold": 0,  # avoids issues with PgBouncer
@@ -31,7 +34,7 @@ class ShortTermMemory:
         logger.info("Short-term memory initialised (backend=postgres)")
 
     @staticmethod
-    def config_for(thread_id: str) -> dict:
+    def config_for(thread_id: str) -> RunnableConfig:
         return {"configurable": {"thread_id": thread_id}}
 
     def list_sessions(self, limit: int = 20) -> list[dict]:
