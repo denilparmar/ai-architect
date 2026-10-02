@@ -3,7 +3,7 @@ name = "ai-architect"
 version = "0.1.0"
 description = "This project accepts a prompt and builds an entire system for you!"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11, <4.0.0"
 dependencies = [
     "langchain>=1.4.3",
     "langchain-anthropic>=1.7.5",
@@ -16,4 +16,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
     "ruff>=0.16.9",
+    "langgraph (>=1.2.12,<2.0.0)",
 ]
+[tool.poetry]
+package-mode = false
