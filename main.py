@@ -14,8 +14,8 @@ def run():
     try:
         logger.info("Starting AI Architect")
         console.print("[bold blue]Welcome to the interactive session. Please type your query[/bold blue]")
-        console.print("[red]Available commands: /ask /exit /quit /new_session /switch /session"
-        "[/red]")
+        console.print("[bold blue]Available commands: /ask /exit /quit /new_session /switch /session"
+        "[/bold blue]")
         console.print("Type [bold]'/exit'[/bold] to quit\n")
 
         while True:
@@ -33,7 +33,7 @@ def run():
                 question = user_input.removeprefix("/ask ").strip()
                 logger.info(f"Ask command received: {question}")
                 console.print(f"[dim]Searching for: {question}...[/dim]")
-                response = handle_query(question, 'abc')
+                response = handle_query(question, 'def')
                 console.print(response)
 
             # elif user_input == "/new_session":
