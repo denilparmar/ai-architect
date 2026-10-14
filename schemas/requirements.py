@@ -3,7 +3,7 @@
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
 from agent.tools.formula_library import ASSUMPTION_DEFAULTS, FORMULA_LIBRARY
 
@@ -16,6 +16,19 @@ SystemType = Literal[SYSTEM_TYPES]
 AssumptionKey = Literal[ASSUMPTION_KEYS]
 
 AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(-gov)?-[a-z]+-\d+$")
+
+
+def check_aws_region(region: str) -> str:
+    """Return `region` if it looks like an AWS region code, else raise with examples."""
+    if not AWS_REGION_PATTERN.match(region):
+        raise ValueError(
+            f"'{region}' is not an AWS region code. Use codes like ap-south-1, us-east-1 or eu-west-1."
+        )
+    return region
+
+
+# A single AWS region code, validated; reused by other schemas (e.g. components.py).
+AwsRegion = Annotated[str, AfterValidator(check_aws_region)]
 
 ASSUMPTIONS_DESCRIPTION = (
     "Sizing assumptions relevant to this system type. Use the typical default unless "
@@ -53,10 +66,7 @@ class ExplicitRequirements(BaseModel):
     @classmethod
     def _check_region_codes(cls, regions: list[str]) -> list[str]:
         for region in regions:
-            if not AWS_REGION_PATTERN.match(region):
-                raise ValueError(
-                    f"'{region}' is not an AWS region code. Use codes like ap-south-1, us-east-1 or eu-west-1."
-                )
+            check_aws_region(region)
         return regions
 
 
