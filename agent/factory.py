@@ -2,6 +2,7 @@ import json
 
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
+
 from agent.interrupt_middleware import (
     ClarificationInterruptMiddleware,
     ask_user,
@@ -9,9 +10,9 @@ from agent.interrupt_middleware import (
 )
 from agent.prompts_library import SYSTEM_PROMPTS
 from agent.tools import capacity_calculator
-from memory.short_term import ShortTermMemory
 from db_store import DatabaseStore
-from llm.factory import get_llm, get_small_llm
+from llm.factory import get_llm
+from memory.short_term import ShortTermMemory
 from observability.logger import get_logger
 from schemas import RequirementSpec
 

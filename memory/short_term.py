@@ -1,9 +1,10 @@
-from psycopg_pool import ConnectionPool
-from langgraph.checkpoint.postgres import PostgresSaver
-from observability.logger import get_logger
 from langchain.agents.middleware import SummarizationMiddleware
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg_pool import ConnectionPool
+
 from config import config
 from llm.factory import get_llm
+from observability.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -29,5 +30,5 @@ class ShortTermMemory:
         return SummarizationMiddleware(
             model=get_llm(),
             trigger=("tokens", config["memory"]["summarize_at_tokens"]),
-            keep=("messages", config["memory"]["keep_last_messages"])
+            keep=("messages", config["memory"]["keep_last_messages"]),
         )

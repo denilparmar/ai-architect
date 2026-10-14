@@ -1,11 +1,13 @@
 import atexit
+import json
+import re
+
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
-from agent.factory import build_req_agent, build_capacity_agent
-from llm.factory import get_small_llm, get_embedder
+
+from agent.factory import build_capacity_agent, build_req_agent
 from observability.logger import get_logger
-from config import config
-import re, json
+
 logger = get_logger(__name__)
 _agent = None
 _memory = None
@@ -13,11 +15,14 @@ _database = None
 # Max graph steps per agent run (each resume after a question is a new run).
 REQUIREMENTS_RECURSION_LIMIT = 25
 
+
 def _close_database() -> None:
     if _database:
         _database.close()
 
+
 atexit.register(_close_database)
+
 
 def handle_query(question: str, thread_id: str) -> str:
     """Entry point for all user queries - reuses the agent and runs it."""
@@ -57,9 +62,9 @@ def handle_query(question: str, thread_id: str) -> str:
         print(sizing_spec_data)
 
         # call to component selection agent
-        #handle_component_selection(requirement_spec,sizing_spec_data)
+        # handle_component_selection(requirement_spec,sizing_spec_data)
 
-        #call to cost estimation agent
+        # call to cost estimation agent
 
         # call to architecture composer agent (include design critic agent to verify)
         logger.info("Successfully handled query for session %s", thread_id)
@@ -72,13 +77,22 @@ def handle_query(question: str, thread_id: str) -> str:
 def invoke_capacity_agent(requirement_spec, thread_id):
     """Invoke the capacity agent to calculate sizing specs based on the requirement spec."""
     """."""
-    capAgent=build_capacity_agent(requirement_spec)
-    capacity_results = capAgent.invoke({"messages": [{"role": "user", "content": "Calculate capacity based on the requirement spec."}]})
+    capAgent = build_capacity_agent(requirement_spec)
+    capacity_results = capAgent.invoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Calculate capacity based on the requirement spec.",
+                }
+            ]
+        }
+    )
     print("\nCapacity Calculation Results (JSON):")
     final_ai_message = capacity_results["messages"][-1]
     print(final_ai_message.content)
-     # Extract content between ```json ... ```
-    match = re.search(r"```json\s*(.*?)\s*```", final_ai_message.content, re.DOTALL)    
+    # Extract content between ```json ... ```
+    match = re.search(r"```json\s*(.*?)\s*```", final_ai_message.content, re.DOTALL)
     print("match object:", match)
     if match:
         json_str = match.group(1)
@@ -103,7 +117,9 @@ def _handle_interrupts(agent, result, config: dict) -> dict:
 
         decisions = []
         for action_request in action_requests:
-            question = action_request["args"].get("question") or action_request["description"]
+            question = (
+                action_request["args"].get("question") or action_request["description"]
+            )
             user_input = ""
             while not user_input:
                 user_input = input(f"[HITL] {question} ").strip()
@@ -113,6 +129,7 @@ def _handle_interrupts(agent, result, config: dict) -> dict:
 
         result = agent.invoke(Command(resume={"decisions": decisions}), config)
     return result
+
 
 # def flatten_requirement_spec(requirement_spec):
 #     if isinstance(requirement_spec, str):
@@ -330,13 +347,13 @@ def _handle_interrupts(agent, result, config: dict) -> dict:
 #     # Build the prompt dynamically
 #     prompt = f"""
 #     You are a helper that maps workload requirements to AWS services and quota codes.
-    
+
 #     Requirement spec:
 #     {requirement_spec}
-    
+
 #     Sizing specs:
 #     {sizing_specs}
-    
+
 #     Task: Return a JSON object with keys "services" and "quotas".
 #     Example:
 #     {"services": ["dynamodb", "elasticache"], "quotas": [{"service_code": "dynamodb", "quota_code": "WriteCapacityUnits"}]}
@@ -375,5 +392,3 @@ def _handle_interrupts(agent, result, config: dict) -> dict:
 #             )
 
 #     return {"docs": docs, "quotas": quotas}
-
- 

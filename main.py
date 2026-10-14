@@ -1,21 +1,28 @@
-from observability.logger import get_logger
 from pathlib import Path
+
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.prompt import Prompt
+
 from agent.designSupervisor import handle_query
-from dotenv import load_dotenv
+from observability.logger import get_logger
 
 load_dotenv(Path(__file__).parent / ".env")
 
 console = Console()
 logger = get_logger(__name__)
 
+
 def run():
     try:
         logger.info("Starting AI Architect")
-        console.print("[bold blue]Welcome to the interactive session. Please type your query[/bold blue]")
-        console.print("[bold blue]Available commands: /ask /exit /quit /new_session /switch /session"
-        "[/bold blue]")
+        console.print(
+            "[bold blue]Welcome to the interactive session. Please type your query[/bold blue]"
+        )
+        console.print(
+            "[bold blue]Available commands: /ask /exit /quit /new_session /switch /session"
+            "[/bold blue]"
+        )
         console.print("Type [bold]'/exit'[/bold] to quit\n")
 
         while True:
@@ -33,7 +40,7 @@ def run():
                 question = user_input.removeprefix("/ask ").strip()
                 logger.info(f"Ask command received: {question}")
                 console.print(f"[dim]Searching for: {question}...[/dim]")
-                handle_query(question, 'ghi')
+                handle_query(question, "ghi")
 
             # elif user_input == "/new_session":
             #     console.print(f"[green]New session started: {session_id}[/green]")
