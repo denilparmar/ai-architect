@@ -1,6 +1,6 @@
 import atexit
-import json
-import re
+# import json
+# import re
 
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
@@ -77,8 +77,8 @@ def handle_query(question: str, thread_id: str) -> str:
 def invoke_capacity_agent(requirement_spec, thread_id):
     """Invoke the capacity agent to calculate sizing specs based on the requirement spec."""
     """."""
-    capAgent = build_capacity_agent(requirement_spec)
-
+    # capAgent = build_capacity_agent(requirement_spec)
+    build_capacity_agent(requirement_spec)
     # capacity_results = capAgent.invoke(
     #     {
     #         "messages": [

@@ -1,5 +1,5 @@
-import json
-import re
+# import json
+# import re
 
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
@@ -15,7 +15,8 @@ from db_store import DatabaseStore
 from llm.factory import get_llm
 from memory.short_term import ShortTermMemory
 from observability.logger import get_logger
-from schemas import RequirementSpec, CapacitySpec
+from schemas import RequirementSpec
+# CapacitySpec
 
 logger = get_logger(__name__)
 
