@@ -1,9 +1,6 @@
 # import json
 # import re
 
-from langchain.agents import create_agent
-from langchain.agents.structured_output import ToolStrategy
-
 from agent.interrupt_middleware import (
     ClarificationInterruptMiddleware,
     ask_user,
@@ -12,6 +9,8 @@ from agent.interrupt_middleware import (
 from agent.prompts_library import SYSTEM_PROMPTS
 from agent.tools import capacity_calculator
 from db_store import DatabaseStore
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from llm.factory import get_llm
 from memory.short_term import ShortTermMemory
 from observability.logger import get_logger

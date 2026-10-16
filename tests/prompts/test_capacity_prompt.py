@@ -4,7 +4,6 @@ import re
 from agent.prompts_library import SYSTEM_PROMPTS
 from schemas.capacity import SizingTable
 
-
 PROMPT = SYSTEM_PROMPTS["capacity_calculator_prompt"]
 
 
