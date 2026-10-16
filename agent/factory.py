@@ -15,7 +15,7 @@ from db_store import DatabaseStore
 from llm.factory import get_llm
 from memory.short_term import ShortTermMemory
 from observability.logger import get_logger
-from schemas import RequirementSpec
+from schemas import RequirementSpec, CapacitySpec
 
 logger = get_logger(__name__)
 
@@ -59,6 +59,7 @@ def build_capacity_agent(requirement_spec):
         #         f"{json.dumps(requirement_spec, indent=2)}"
         #     ),
         #     tools=[capacity_calculator.calculate_capacity],
+        #     response_format=ToolStrategy(CapacitySpec),
         # )
         capacity_calculator.calculate_capacity(requirement_spec)
     except Exception as e:
