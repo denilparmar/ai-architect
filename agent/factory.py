@@ -1,4 +1,5 @@
 import json
+import re
 
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
@@ -49,17 +50,18 @@ def build_req_agent():
 
 def build_capacity_agent(requirement_spec):
     try:
-        llm = get_llm()
-        agent = create_agent(
-            llm,
-            system_prompt=(
-                f"{SYSTEM_PROMPTS['capacity_calculator_prompt']}\n\n"
-                "Requirement specification:\n"
-                f"{json.dumps(requirement_spec, indent=2)}"
-            ),
-            tools=[capacity_calculator.calculate_capacity],
-        )
+        # llm = get_llm()
+        # agent = create_agent(
+        #     llm,
+        #     system_prompt=(
+        #         f"{SYSTEM_PROMPTS['capacity_calculator_prompt']}\n\n"
+        #         "Requirement specification:\n"
+        #         f"{json.dumps(requirement_spec, indent=2)}"
+        #     ),
+        #     tools=[capacity_calculator.calculate_capacity],
+        # )
+        capacity_calculator.calculate_capacity(requirement_spec)
     except Exception as e:
         print(f"Error occurred while building the agent. Closing memory. {e}")
         raise
-    return agent
+    # return agent

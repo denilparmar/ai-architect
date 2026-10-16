@@ -5,7 +5,11 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
-from agent.tools.formula_library import ASSUMPTION_DEFAULTS, FORMULA_LIBRARY
+from agent.tools.formula_library import (
+    ASSUMPTION_DEFAULTS,
+    FORMULA_LIBRARY,
+    SYSTEM_ASSUMPTIONS,
+)
 
 # Allowed values come from formula_library.py so the schema, the calculator
 # and the field descriptions can never disagree.
@@ -30,11 +34,30 @@ def check_aws_region(region: str) -> str:
 # A single AWS region code, validated; reused by other schemas (e.g. components.py).
 AwsRegion = Annotated[str, AfterValidator(check_aws_region)]
 
+def _system_assumption_hints(profile: dict) -> list[str]:
+    """Domain keys a system reads, plus its numeric defaults, in profile order."""
+    hints = []
+    for key, spec in profile.items():
+        if isinstance(spec, (int, float)):
+            hint = key + "=" + format(spec, "g")
+        else:
+            hint = spec if isinstance(spec, str) else spec[0]
+        if hint not in hints:
+            hints.append(hint)
+    return hints
+
+
 ASSUMPTIONS_DESCRIPTION = (
     "Sizing assumptions relevant to this system type. Use the typical default unless "
     "the user gave a value. Allowed keys and typical defaults: "
     + ", ".join(
         key + "=" + format(value, "g") for key, value in ASSUMPTION_DEFAULTS.items()
+    )
+    + ". Keys that matter per system type (key=value is that system's own default, "
+    "a bare key uses its typical default above): "
+    + "; ".join(
+        system_type + ": " + ", ".join(_system_assumption_hints(profile))
+        for system_type, profile in SYSTEM_ASSUMPTIONS.items()
     )
 )
 
@@ -53,13 +76,13 @@ class ExplicitRequirements(BaseModel):
         description=(
             "AWS region codes where users are. Convert locations the user mentions "
             "(e.g. India → ap-south-1, US East → us-east-1, Europe → eu-west-1). "
-            "Empty list if no preference."
+            "default us-east-1 if no preference."
         ),
     )
     monthly_budget_usd: float | None = Field(
         default=None,
         gt=0,
-        description="Monthly budget ceiling in USD as the user stated it, or null if they chose not to give one.",
+        description="Monthly budget ceiling in USD as the user stated it, or default to 80$ if they chose not to give one.",
     )
 
     @field_validator("regions")

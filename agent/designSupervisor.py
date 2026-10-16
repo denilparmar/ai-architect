@@ -57,9 +57,9 @@ def handle_query(question: str, thread_id: str) -> str:
         # Call the capacity agent, which generates and saves sizing specs.
         invoke_capacity_agent(requirement_spec, thread_id)
 
-        sizing_spec_data = _database.get_sizing_specs(thread_id)
-        print("\nPrinting the sizing_spec_data now:")
-        print(sizing_spec_data)
+        # sizing_spec_data = _database.get_sizing_specs(thread_id)
+        # print("\nPrinting the sizing_spec_data now:")
+        # print(sizing_spec_data)
 
         # call to component selection agent
         # handle_component_selection(requirement_spec,sizing_spec_data)
@@ -78,29 +78,30 @@ def invoke_capacity_agent(requirement_spec, thread_id):
     """Invoke the capacity agent to calculate sizing specs based on the requirement spec."""
     """."""
     capAgent = build_capacity_agent(requirement_spec)
-    capacity_results = capAgent.invoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Calculate capacity based on the requirement spec.",
-                }
-            ]
-        }
-    )
-    print("\nCapacity Calculation Results (JSON):")
-    final_ai_message = capacity_results["messages"][-1]
-    print(final_ai_message.content)
-    # Extract content between ```json ... ```
-    match = re.search(r"```json\s*(.*?)\s*```", final_ai_message.content, re.DOTALL)
-    print("match object:", match)
-    if match:
-        json_str = match.group(1)
-        capacity_data = json.loads(json_str)
-        print("\nParsed Capacity Data (JSON):")
-        print(capacity_data)
+
+    # capacity_results = capAgent.invoke(
+    #     {
+    #         "messages": [
+    #             {
+    #                 "role": "user",
+    #                 "content": "Calculate capacity based on the requirement spec.",
+    #             }
+    #         ]
+    #     }
+    # )
+    # print("\nCapacity Calculation Results (JSON):")
+    # final_ai_message = capacity_results["messages"][-1]
+    # print(final_ai_message.content)
+    # # Extract content between ```json ... ```
+    # match = re.search(r"```json\s*(.*?)\s*```", final_ai_message.content, re.DOTALL)
+    # print("match object:", match)
+    # if match:
+    #     json_str = match.group(1)
+    #     capacity_data = json.loads(json_str)
+    #     print("\nParsed Capacity Data (JSON):")
+    #     print(capacity_data)
     # Save capacity specs to the database
-    _database.save_sizing_specs(thread_id, capacity_data)
+    #_database.save_sizing_specs(thread_id, capacity_data)
 
 
 def _handle_interrupts(agent, result, config: dict) -> dict:
