@@ -19,7 +19,9 @@ dependencies = [
     "langgraph (>=1.2.12,<2.0.0)",
     "aws-mcp (>=1.7.0,<2.0.0)",
     "mcp (>=2.3.0,<3.0.0)",
-    "awslabs-aws-documentation-mcp-server (>=1.2.2,<2.0.0)"
+    "awslabs-aws-documentation-mcp-server (>=1.2.2,<2.0.0)",
+    "isort (>=9.0.2,<10.0.0)",
+    "uv (>=0.13.1,<0.14.0)",
 ]
 [tool.poetry]
 package-mode = false

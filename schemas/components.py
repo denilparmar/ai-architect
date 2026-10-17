@@ -42,7 +42,7 @@ CpuArchitecture = Literal["x86_64", "arm64"]
 
 
 REFERENCE_PREFIXES = ("requirement", "clarification", "assumption", "sizing", "kb")
-REFERENCE_PATTERN = r"^(requirement|clarification|assumption|sizing|kb):[a-z0-9_\-]+$"
+REFERENCE_PATTERN = r"^(requirement|clarification|assumption|sizing|kb):[a-zA-Z0-9_\-\./]+$"
 
 Reference = Annotated[str, Field(pattern=REFERENCE_PATTERN)]
 

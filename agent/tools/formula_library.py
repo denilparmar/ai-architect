@@ -126,7 +126,7 @@ ASSUMPTION_DEFAULTS = {
     # e-commerce platforms, food delivery apps
     "orders_per_user_per_day": 2,
     # ticket booking systems
-    "bookings_per_user_per_day": 1,
+    "bookings_per_user_per_day": 3,
     # food delivery apps
     "avg_delivery_time_minutes": 30,
     # ride-hailing / mobility apps

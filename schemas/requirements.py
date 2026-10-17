@@ -82,7 +82,7 @@ class ExplicitRequirements(BaseModel):
     monthly_budget_usd: float | None = Field(
         default=None,
         gt=0,
-        description="Monthly budget ceiling in USD as the user stated it, or default to 80$ if they chose not to give one.",
+        description="Monthly budget ceiling in USD as the user stated it, or default to no restriction if they chose not to give one.",
     )
 
     @field_validator("regions")
