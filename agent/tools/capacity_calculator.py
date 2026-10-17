@@ -1,204 +1,121 @@
-from typing import Any
+import json
+from typing import Any, Literal
 
-from agent.tools.formula_library import ASSUMPTION_DEFAULTS, FORMULA_LIBRARY
+from pydantic import BaseModel, Field
+
+from agent.tools.formula_library import (
+    ASSUMPTION_DEFAULTS,
+    FORMULA_LIBRARY,
+    SYSTEM_ASSUMPTIONS,
+)
 from llm.factory import get_small_llm
 from observability.logger import get_logger
 
 logger = get_logger(__name__)
 
-
-def _get(assumptions: dict, key: str) -> float:
-    return assumptions.get(key, ASSUMPTION_DEFAULTS[key])
+SECONDS_PER_DAY = 86400
 
 
-# Messaging / Chat Apps
-def calc_peak_write_qps(dau, assumptions):
-    msgs = _get(assumptions, "messages_per_user_per_day")
-    peak_factor = 4
+# Every calculator takes (dau, a) where `a` is the fully resolved assumptions dict from
+# resolve_assumptions(), so it only reads generic keys and never needs to know the system.
+def _peak_qps(dau, per_user_per_day, a):
+    return dau * per_user_per_day / SECONDS_PER_DAY * a["peak_factor"]
+
+
+def calc_peak_write_qps(dau, a):
     return {
-        "name": "peak_write_qps",
-        "formula": "DAU × msgs/user/day ÷ 86,400 × peak_factor",
-        "value": dau * msgs / 86400 * peak_factor,
+        "formula": "DAU × writes/user/day ÷ 86,400 × peak_factor",
+        "value": _peak_qps(dau, a["writes_per_user_per_day"], a),
+        "unit": "qps",
     }
 
 
-def calc_storage_growth_messages(dau, assumptions):
-    msgs = _get(assumptions, "messages_per_user_per_day")
-    kb_per_msg = _get(assumptions, "avg_message_size_kb")
-    daily_storage_mb = dau * msgs * kb_per_msg / 1024
-    monthly_storage_gb = daily_storage_mb * 30 / 1024
+def calc_peak_read_qps(dau, a):
     return {
-        "name": "storage_growth",
-        "formula": "DAU × msgs/user/day × KB/msg",
-        "daily_MB": daily_storage_mb,
-        "monthly_GB": monthly_storage_gb,
+        "formula": "DAU × reads/user/day ÷ 86,400 × peak_factor",
+        "value": _peak_qps(dau, a["reads_per_user_per_day"], a),
+        "unit": "qps",
     }
 
 
-# Social Networks
-def calc_feed_updates_qps(dau, assumptions):
-    posts = _get(assumptions, "posts_per_user_per_day")
-    peak_factor = 3
+def calc_concurrent_connections(dau, a):
     return {
-        "name": "feed_updates_qps",
-        "formula": "DAU × posts/user/day ÷ 86,400 × peak_factor",
-        "value": dau * posts / 86400 * peak_factor,
+        "formula": "DAU × concurrency_ratio",
+        "value": dau * a["concurrency_ratio"],
+        "unit": "connections",
     }
 
 
-def calc_fanout_load(dau, assumptions):
-    posts = _get(assumptions, "posts_per_user_per_day")
-    followers = _get(assumptions, "avg_followers")
+def calc_storage_growth_yearly(dau, a):
+    item_gb = (
+        a["avg_item_size_kb"] / 1024 + a["media_ratio"] * a["avg_media_mb"]
+    ) / 1024
     return {
-        "name": "fanout_load",
-        "formula": "posts × avg_followers",
-        "value": posts * followers,
+        "formula": "DAU × writes/user/day × (item KB + media_ratio × media MB) × 365",
+        "value": dau * a["writes_per_user_per_day"] * item_gb * 365,
+        "unit": "GB",
     }
 
 
-# Video Streaming
-def calc_peak_concurrent_streams(dau, assumptions):
-    avg_hours = _get(assumptions, "average_streaming_hours_per_user_per_day")
-    peak_factor = 4
+def calc_hot_working_set(dau, a):
     return {
-        "name": "peak_concurrent_streams",
-        "formula": "DAU × (avg_hours/24) × peak_factor",
-        "value": dau * (avg_hours / 24) * peak_factor,
+        "formula": "DAU × hot_items/user × avg_item_size",
+        "value": dau * a["hot_items_per_user"] * a["avg_item_size_kb"] / 1024 / 1024,
+        "unit": "GB",
     }
 
 
-def calc_network_throughput(dau, assumptions):
-    avg_hours = _get(assumptions, "average_streaming_hours_per_user_per_day")
-    peak_factor = 4
-    mbps_per_stream = _get(assumptions, "mbps_per_stream")
-    concurrent = dau * (avg_hours / 24) * peak_factor
+def calc_egress_bandwidth(dau, a):
+    read_qps = _peak_qps(dau, a["reads_per_user_per_day"], a)
     return {
-        "name": "network_throughput",
-        "formula": "concurrent_streams × Mbps/stream",
-        "value_Mbps": concurrent * mbps_per_stream,
+        "formula": "peak_read_qps × avg_response_size",
+        "value": read_qps * a["avg_response_size_kb"] * 8 / 1024,
+        "unit": "Mbps",
     }
 
 
-# E-Commerce
-def calc_orders_per_second(dau, assumptions):
-    orders = _get(assumptions, "orders_per_user_per_day")
-    peak_factor = 3
+def calc_concurrent_sessions(dau, a):
     return {
-        "name": "orders_per_second",
-        "formula": "DAU × orders/user/day ÷ 86,400 × peak_factor",
-        "value": dau * orders / 86400 * peak_factor,
+        "formula": "DAU × (active_hours/24) × peak_factor",
+        "value": dau * (a["active_hours_per_user_per_day"] / 24) * a["peak_factor"],
+        "unit": "sessions",
     }
 
 
-# Ticket Booking
-def calc_peak_booking_qps(dau, assumptions):
-    bookings = _get(assumptions, "bookings_per_user_per_day")
-    peak_factor = 3
+def calc_network_throughput(dau, a):
+    sessions = calc_concurrent_sessions(dau, a)["value"]
     return {
-        "name": "peak_booking_qps",
-        "formula": "DAU × bookings/user/day ÷ 86,400 × peak_factor",
-        "value": dau * bookings / 86400 * peak_factor,
+        "formula": "concurrent_sessions × Mbps/stream",
+        "value": sessions * a["mbps_per_stream"],
+        "unit": "Mbps",
     }
 
 
-# Food Delivery
-def calc_orders_per_second_delivery(dau, assumptions):
-    orders = _get(assumptions, "orders_per_user_per_day")
-    peak_factor = 3
+def calc_littles_law_concurrency(dau, a):
+    write_qps = _peak_qps(dau, a["writes_per_user_per_day"], a)
     return {
-        "name": "orders_per_second",
-        "formula": "DAU × orders/user/day ÷ 86,400 × peak_factor",
-        "value": dau * orders / 86400 * peak_factor,
+        "formula": "peak_write_qps × avg_duration (Little's law)",
+        "value": write_qps * a["avg_duration_minutes"] * 60,
+        "unit": "concurrent trips",
     }
 
 
-def calc_driver_concurrency(dau, assumptions):
-    orders = _get(assumptions, "orders_per_user_per_day")
-    peak_factor = 3
-    avg_delivery_time_min = _get(assumptions, "avg_delivery_time_minutes")
-    orders_sec = dau * orders / 86400 * peak_factor
+def calc_active_user_query_rate(dau, a):
     return {
-        "name": "driver_concurrency",
-        "formula": "orders/sec × avg_delivery_time",
-        "value": orders_sec * avg_delivery_time_min,
+        "formula": "DAU × concurrency_ratio × ops/active user/hour ÷ 3600",
+        "value": dau
+        * a["concurrency_ratio"]
+        * a["ops_per_active_user_per_hour"]
+        / 3600,
+        "unit": "qps",
     }
 
 
-# Ride-Hailing
-def calc_rides_per_second(dau, assumptions):
-    rides = _get(assumptions, "rides_per_user_per_day")
-    peak_factor = 3
+def calc_fanout_load(dau, a):
     return {
-        "name": "rides_per_second",
-        "formula": "DAU × rides/user/day ÷ 86,400 × peak_factor",
-        "value": dau * rides / 86400 * peak_factor,
-    }
-
-
-def calc_driver_concurrency_rides(dau, assumptions):
-    rides = _get(assumptions, "rides_per_user_per_day")
-    peak_factor = 3
-    avg_trip_time_min = _get(assumptions, "avg_trip_time_minutes")
-    rides_sec = dau * rides / 86400 * peak_factor
-    return {
-        "name": "driver_concurrency",
-        "formula": "rides/sec × avg_trip_time",
-        "value": rides_sec * avg_trip_time_min,
-    }
-
-
-# Analytics / Data Warehouse
-def calc_query_throughput(dau, assumptions):
-    queries = _get(assumptions, "queries_per_user_per_hour")
-    concurrent_users = dau * 0.1  # assume 10% are analysts
-    return {
-        "name": "query_throughput",
-        "formula": "concurrent analysts × queries/hour ÷ 3600",
-        "value": concurrent_users * queries / 3600,
-    }
-
-
-# Banking / FinTech
-def calc_transactions_per_second(dau, assumptions):
-    txns = _get(assumptions, "transactions_per_user_per_day")
-    peak_factor = 3
-    return {
-        "name": "transactions_per_second",
-        "formula": "DAU × txns/user/day ÷ 86,400 × peak_factor",
-        "value": dau * txns / 86400 * peak_factor,
-    }
-
-
-# Education / Learning
-def calc_concurrent_students(dau, assumptions):
-    avg_hours = _get(assumptions, "avg_learning_hours_per_user_per_day")
-    peak_factor = 3
-    return {
-        "name": "concurrent_students",
-        "formula": "DAU × (avg_hours/24) × peak_factor",
-        "value": dau * (avg_hours / 24) * peak_factor,
-    }
-
-
-# Search Engines
-def calc_search_qps(dau, assumptions):
-    queries = _get(assumptions, "queries_per_user_per_day")
-    peak_factor = 3
-    return {
-        "name": "search_qps",
-        "formula": "DAU × queries/user/day ÷ 86,400 × peak_factor",
-        "value": dau * queries / 86400 * peak_factor,
-    }
-
-
-# CDN
-def calc_edge_requests_per_second(dau, assumptions):
-    requests = _get(assumptions, "requests_per_user_per_day")
-    peak_factor = 3
-    return {
-        "name": "edge_requests_per_second",
-        "formula": "DAU × requests/user/day ÷ 86,400 × peak_factor",
-        "value": dau * requests / 86400 * peak_factor,
+        "formula": "writes/user/day × avg_followers",
+        "value": a["writes_per_user_per_day"] * a["avg_followers"],
+        "unit": "deliveries per user per day",
     }
 
 
@@ -210,6 +127,26 @@ def normalize_assumptions(raw_assumptions):
     return {k: v for k, v in raw_assumptions.items() if k in ASSUMPTION_DEFAULTS}
 
 
+def resolve_assumptions(system_type: str, supplied: dict) -> dict:
+    """Return every assumption key with a value: user-supplied, else the system's, else global."""
+    profile = SYSTEM_ASSUMPTIONS.get(system_type, {})
+    resolved = {}
+    for key, default in ASSUMPTION_DEFAULTS.items():
+        if key in supplied:
+            resolved[key] = supplied[key]
+            continue
+        spec = profile.get(key, default)
+        if isinstance(spec, str):
+            spec = (spec, 1)
+        if isinstance(spec, tuple):
+            domain_key, factor = spec
+            value = supplied.get(domain_key, ASSUMPTION_DEFAULTS[domain_key]) * factor
+        else:
+            value = spec
+        resolved[key] = value
+    return resolved
+
+
 def calculate_capacity(
     requirement_spec: dict[str, Any],
     thread_id: str = "abc",
@@ -217,45 +154,60 @@ def calculate_capacity(
     """Calculate workload metrics from a requirement specification."""
     system_type = map_system(requirement_spec.get("system_type", "").lower())
     dau = requirement_spec.get("explicit_requirements", {}).get("daily_active_users", 0)
-    assumptions = normalize_assumptions(requirement_spec.get("assumptions", {}))
+    supplied = normalize_assumptions(requirement_spec.get("assumptions", {}))
     results = []
-    for category, formulas in FORMULA_LIBRARY.items():
-        if category in system_type:
-            for f in formulas:
-                fun_name = globals()[f]
-                calc = fun_name(dau, assumptions)
-                print(
-                    f"Calculated {calc['name']} for {category}: {calc.get('value') or calc}"
-                )
-                results.append(
-                    {
-                        "thread_id": thread_id,
-                        "resource_category": calc["name"],
-                        "requirement": calc.get("value") or calc,
-                    }
-                )
+    metrics = FORMULA_LIBRARY[system_type]
+    assumptions = resolve_assumptions(system_type, supplied)
+    for metric in metrics:
+        calc = globals()[metric["calc"]](dau, assumptions)
+        results.append(
+            {
+                "thread_id": thread_id,
+                "metric": metric["name"],
+                "value": calc["value"],
+                "unit": calc["unit"],
+                "computed_from": calc["formula"],
+                "drives": metric["drives"],
+            }
+        )
 
-    print("Capacity Calculation Results:")
-    for result in results:
-        print(f"  {result['resource_category']}: {result['requirement']}")
+    print("Capacity Calculation Results (JSON):")
+    print(json.dumps(results, indent=2, ensure_ascii=False))
     return results
 
 
-def map_system(req_system_type):
-    small_llm = get_small_llm()
-    # Build the prompt dynamically
-    prompt = f"""
-    You are a helper that maps system type from requirements spec to the system type in formula_library.
-    
-    System type from requirements spec:
-    {req_system_type}
-    
-    formula library:
-    {FORMULA_LIBRARY.items()}
-    Task: Return the matching key from FORMULA_LIBRARY.
+class _SystemMatch(BaseModel):
+    system_type: Literal[tuple(FORMULA_LIBRARY)] = Field(
+        description="The FORMULA_LIBRARY key that best matches the requested system."
+    )
 
-    """
-    result = small_llm.invoke(prompt)
-    text = result.content
-    print(f"\nLLM raw response:\n{text}")
-    return text
+
+def _normalize(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
+def map_system(req_system_type: str) -> str:
+    """Resolve any system description to the closest FORMULA_LIBRARY key."""
+    normalized = _normalize(req_system_type)
+    for key in FORMULA_LIBRARY:
+        if _normalize(key) == normalized:
+            return key
+
+    # Free-form input: ask the LLM to pick a key; the schema restricts it to valid keys.
+    prompt = f"""You map a system description to the closest system type in a formula library.
+
+System description:
+{req_system_type}
+
+Valid system types:
+{list(FORMULA_LIBRARY)}
+
+Pick the single semantically closest valid system type."""
+    try:
+        match = get_small_llm().with_structured_output(_SystemMatch).invoke(prompt)
+    except Exception as e:
+        raise ValueError(
+            f"Could not map system type {req_system_type!r} to one of {list(FORMULA_LIBRARY)}"
+        ) from e
+    logger.info(f"Mapped system type {req_system_type!r} -> {match.system_type!r}")
+    return match.system_type

@@ -12,8 +12,8 @@ _REQUIREMENTS_PROMPT = (
     "- If the user hasn't given the number of daily active users, ask for it before\n"
     "  anything else.\n"
     "- Always ask about a monthly budget ceiling. If the user doesn't want to give one,\n"
-    "  accept that and continue.\n"
-    "- Ask at most 1-2 further questions, one at a time, only about topics that change\n"
+    "  accept that it is unrestricted and continue.\n"
+    "- Ask at most 2-3 further questions, one at a time, only about topics that change\n"
     "  the architecture (voice/video, regions, compliance, latency).\n"
     "- Always ask questions by calling the ask_user tool, never as plain assistant text.\n"
     "- Never return the structured response in the same turn as asking a question.\n"
@@ -45,6 +45,8 @@ _REQUIREMENTS_PROMPT = (
     'Agent calls ask_user(question="Any compliance requirements, such as GDPR or PCI\n'
     'DSS?") and waits.\n'
     'User: "GDPR."\n'
+    'Agent calls ask_user(question="How much latency is acceptable for your application?") and waits.\n'
+    'User: "Under 200 ms."\n'
     "Agent returns the structured response.\n"
 )
 
@@ -56,7 +58,7 @@ Objectives:
 - Understand the application's requirements specifications and workload characteristics.
 - Extract explicit requirements from the supplied specification.
 - Use available calculation tools as authoritative for the metrics they calculate.
-- Estimate CPU, memory, application replicas, storage, database capacity, network bandwidth, latency targets, caching needs, and scaling thresholds.
+- Identify the infrastructure resources and design decisions driven by each capacity metric.
 
 Rules:
 - Use the requirement specification provided in the system prompt.
@@ -66,26 +68,35 @@ Rules:
 - Separate viewer-facing CDN bandwidth from origin bandwidth.
 - Distinguish media storage from database metadata storage.
 - Do not infer application/API CPU or memory solely from DAU or concurrent video streams.
-- End with a JSON array of key-value rows. Each row must have exactly these fields:
-  `resource_category` for the resource_category or metric, and `requirement` for its recommendation.
-- Put the recommendation, including any baseline/production distinction and caveats, in
-  the `requirement` value. Use one row per category.
-- Return the final JSON array inside a `json` fenced code block so it can be parsed.
+- Return only a JSON object matching this shape, with no Markdown fences or surrounding prose:
 
 Final output format:
 ```json
-[
-  {
-    "resource_category": "application_api",
-    "requirement": "1–2 vCPU, 2–4 GiB RAM; 1–2 replicas", At least 2 replicas; validate per-instance CPU and memory with benchmarks"
-
-  },
-  {
-    "resource_category": "network_bandwidth",
-    "requirement": "Approximately 130 Mbps viewer-facing bandwidth, scale CDN delivery to measured peak demand"
-  }
-]
+{
+  "rows": [
+    {
+      "Derived Metric": "peak_write_qps",
+      "Value": "12 qps",
+      "Computed From": "DAU × writes/user/day ÷ 86,400 × peak_factor = 12 qps",
+      "Drives": "Database write throughput and API write-path capacity"
+    }
+  ]
+}
 ```
+
+The `rows` list must contain at least one row. Each row must contain exactly these
+four non-empty string fields: `Derived Metric`, `Computed From`, `Drives`, and `Value`.
+Use the metric name in `Derived Metric`; include the formula, relevant inputs, and
+the tool-reported result and unit in `Computed From`; identify the downstream
+resources or decisions affected in `Drives`. Include the tool-reported value and
+unit in the `Value` field. Preserve tool-reported values and
+units exactly. Do not add fields such as `resource_category` or `requirement`.
+If a capacity cannot be determined from the supplied information, state the
+missing inputs and what they drive in a row rather than inventing a value.
+
+Worked examples below are for capacity-planning reasoning only. Their illustrative
+tables and JSON shapes are not valid final output and must never be copied into
+the response; always use the `SizingTable` shape above.
 
 Worked example 1 — Small video streaming platform
 
@@ -124,59 +135,39 @@ Expected reasoning:
 - Estimate database capacity for metadata only; do not confuse it with media storage.
 - Size transcoding separately if the service ingests and encodes videos.
 
-Illustrative capacity table:
-
-
+Expected SizingTable output:
+```json
 {
-  "capacity_table": [
+  "rows": [
     {
-      "resource_category": "Application/API",
-      "requirement": "Minimum 2 replicas, each with 1 vCPU and 2–4 GiB RAM; initial total capacity of 2 vCPU and 4–8 GiB RAM. Scale out when CPU exceeds 70% for 5 minutes or API p95 latency exceeds 300 ms."
+      "Derived Metric": "calc_peak_concurrent_streams",
+      "Value": 33.33 streams,
+      "Computed From": "Tool result = 33.33 streams",
+      "Drives": "Concurrent video-delivery demand; use approximately 34 streams for whole-stream planning"
     },
     {
-      "resource_category": "Load balancing",
-      "requirement": "1 managed Layer 7 load balancer distributing traffic across at least 2 application replicas; enable health checks at 10-second intervals and mark unhealthy instances after 3 consecutive failures. Use multi-zone redundancy where supported."
+      "Derived Metric": "viewer_facing_delivery_bandwidth",
+      "Value": 130 Mbps,
+      "Computed From": "33.33 streams × assumed 3 Mbps/stream × 1.30 headroom = approximately 130 Mbps",
+      "Drives": "CDN and viewer-facing delivery capacity; illustrative estimate, validate bitrate and peak traffic"
     },
     {
-      "resource_category": "Metadata database",
-      "requirement": "Initial capacity of 2 vCPU, 4 GiB RAM, and 50 GB SSD storage. For production high availability, use a primary and standby across 2 availability zones, automated daily backups retained for at least 7 days, and storage alerts at 70% and 85% utilization. Validate CPU, query throughput, and connection limits through load testing."
+      "Derived Metric": "origin_bandwidth",
+      "Value": 26 Mbps,
+      "Computed From": "33.33 streams × assumed 3 Mbps/stream × (1 - assumed 0.80 cache-hit ratio) × 1.30 headroom = approximately 26 Mbps",
+      "Drives": "Origin egress capacity; illustrative estimate, validate cache misses and cache-cold behavior"
     },
     {
-      "resource_category": "Cache",
-      "requirement": "Initial cache capacity of 512 MiB–1 GiB RAM. Target a cache hit ratio of at least 80% for eligible, cacheable requests. For production high availability, deploy 2 cache nodes or an equivalent managed redundant configuration. Scale based on memory utilization, eviction rate, and request latency."
-    },
-    {
-      "resource_category": "Media object storage",
-      "requirement": "Use 100 GB as an illustrative initial allocation, not a workload-derived requirement. Calculate required capacity as stored media volume × encoding variants and copies, plus 30% growth headroom where appropriate. Alert at 70% and 85% utilization and configure lifecycle policies and recoverability controls."
-    },
-    {
-      "resource_category": "CDN / video delivery",
-      "requirement": "Plan for approximately 34 concurrent streams at an assumed average bitrate of 3 Mbps per stream. Estimated peak payload bandwidth is approximately 102 Mbps; with 30% headroom, target approximately 133 Mbps of viewer-facing delivery capacity. Target at least 80% byte cache hit ratio as an initial objective and validate with traffic tests."
-    },
-    {
-      "resource_category": "Origin bandwidth",
-      "requirement": "Provision approximately 27 Mbps as an illustrative origin bandwidth target, assuming 34 streams at 3 Mbps, an 80% byte cache hit ratio, and 30% headroom. Recalculate using measured cache misses, origin request rates, and bitrate distribution; this estimate is not a guaranteed peak."
-    },
-    {
-      "resource_category": "Transcoding workers",
-      "requirement": "If transcoding is required, start with 1 worker provisioned at 2–4 vCPU and 4–8 GiB RAM. For higher availability, consider at least 2 workers. Scale based on incoming video volume, encoding duration, worker throughput, and queue delay; validate sizing through encoding benchmarks."
-    },
-    {
-      "resource_category": "Application latency",
-      "requirement": "Target API response latency of p95 ≤ 300 ms and p99 ≤ 800 ms under expected peak load. Track these percentiles over rolling 5-minute windows and trigger investigation or scaling when targets are consistently exceeded."
-    },
-    {
-      "resource_category": "Playback performance",
-      "requirement": "Target video startup latency of p95 ≤ 2 seconds and p99 ≤ 4 seconds, with a rebuffering ratio below 1%. Measure startup time, rebuffering, playback failures, and bitrate adaptation across representative devices and Indian network conditions."
-    },
-    {
-      "resource_category": "Logs and backups",
-      "requirement": "Retain application and infrastructure logs for at least 30 days as an initial policy. Perform automated daily database backups with at least 7-day retention, monitor backup success, and conduct a restore test at least monthly. Define explicit recovery point and recovery time objectives before production launch."
+      "Derived Metric": "media_storage_capacity",
+      "Value": "TBD",
+      "Computed From": "Cannot be determined without library size, average asset size, encoding variants, and retention",
+      "Drives": "Object-storage capacity and lifecycle policy"
     }
   ]
 }
+```
 
-These are preliminary engineering examples, not benchmark-derived requirements. Label them accordingly and refine them using real traffic measurements. Explain that low DAU does not guarantee low bandwidth demand because bitrate and concurrent playback drive video delivery capacity.
+These are preliminary examples, not benchmark-derived requirements. Refine them using real traffic measurements. Low DAU does not guarantee low bandwidth demand because bitrate and concurrent playback drive video delivery capacity.
 
 Worked example 2 — Large-scale video streaming platform
 
@@ -208,77 +199,107 @@ Example tool output:
 
 Treat this as an illustrative supplied result, not as a measurement or a value to silently recompute.
 
-Illustrative capacity table:
-
+Expected SizingTable output:
+```json
 {
-  "capacity_table": [
+  "rows": [
     {
-      "resource_category": "Application/API",
-      "requirement": "Start with 3 application replicas, each provisioned with 4 vCPU and 8 GiB RAM, for an initial total of 12 vCPU and 24 GiB RAM. Autoscale from 3 to 12 replicas. Trigger scale-out when CPU exceeds 65% or API p95 latency exceeds 300 ms for 5 minutes. Final sizing must be validated against measured requests per second, authentication traffic, playback-session requests, and catalog workload."
+      "Derived Metric": "calc_peak_concurrent_streams",
+      "Value": 5000 streams,
+      "Computed From": "Tool result = 5000 streams",
+      "Drives": "Concurrent video-delivery demand"
     },
     {
-      "resource_category": "Metadata database",
-      "requirement": "Use a managed relational database as an initial design assumption, with 8 vCPU, 32 GiB RAM, and 500 GB SSD storage for the primary instance, plus a standby instance with equivalent starting capacity across availability zones. Configure automated backups with at least 7-day retention, alert at 70% and 85% storage utilization, target database query p95 latency below 50 ms for common queries, and cap application connection pools at 20 connections per replica. Tune CPU, memory, storage, and connection limits using measured query rates and transaction complexity."
+      "Derived Metric": "viewer_facing_delivery_bandwidth",
+      "Value": 26 Gbps,
+      "Computed From": "5000 streams × assumed 4 Mbps/stream × 1.30 headroom = 26 Gbps",
+      "Drives": "CDN and viewer-facing delivery capacity; illustrative estimate, validate bitrate distribution and burst traffic"
     },
     {
-      "resource_category": "Cache",
-      "requirement": "Start with a managed highly available cache configuration providing 3 nodes with 8 GiB RAM each, or an equivalent managed capacity of approximately 24 GiB before service overhead. Target at least 90% cache hit ratio for eligible application-cache requests. Trigger capacity review when memory utilization exceeds 75%, eviction rates rise persistently, or p95 cache latency exceeds 10 ms. Tune capacity based on working-set size, request rate, and cache policy."
+      "Derived Metric": "origin_bandwidth",
+      "Value": 5.2 Gbps,
+      "Computed From": "5000 streams × assumed 4 Mbps/stream × (1 - assumed 0.80 cache-hit ratio) × 1.30 headroom = 5.2 Gbps",
+      "Drives": "Origin egress capacity; illustrative estimate, validate cache misses, cache-cold events, and origin shielding"
     },
     {
-      "resource_category": "Media object storage",
-      "requirement": "Use scalable object storage with capacity calculated as retained video count × average stored size per video across encoding variants × required copies, plus approximately 30% planning headroom. Set storage-utilization alerts at 70% and 85%, configure lifecycle rules for content based on access frequency and retention requirements, and define versioning or recovery controls. Determine the actual required capacity from library size, upload rate, average encoded asset size, and retention period; concurrent streams alone cannot determine storage capacity."
+      "Derived Metric": "media_storage_capacity",
+      "Value": "TBD",
+      "Computed From": "Cannot be determined without library size, upload rate, average encoded asset size, encoding variants, and retention",
+      "Drives": "Object-storage capacity, lifecycle, and recovery policy"
     },
     {
-      "resource_category": "CDN / video delivery",
-      "requirement": "Support 5,000 concurrent streams at an assumed average delivered bitrate of 4 Mbps. Estimated peak viewer-facing payload bandwidth is 5,000 × 4 Mbps = 20,000 Mbps, or 20 Gbps. Add 30% headroom to establish an illustrative delivery planning target of 26 Gbps. Target a byte cache hit ratio of at least 80% as an initial objective. Validate bitrate distribution, geographic coverage, cache behavior, protocol overhead, and burst traffic through load testing."
-    },
-    {
-      "resource_category": "Origin bandwidth",
-      "requirement": "At 5,000 streams and 4 Mbps per stream, estimated peak payload demand is 20 Gbps. Assuming an 80% CDN byte cache hit ratio, estimated origin delivery demand is 4 Gbps. With 30% headroom, the illustrative origin bandwidth planning target is 5.2 Gbps. Separately evaluate cache-cold events, origin shielding, cache misses, and content popularity. Provision additional burst capacity or redundant origins according to the required recovery and cache-warming strategy."
-    },
-    {
-      "resource_category": "Network bandwidth",
-      "requirement": "Plan for up to 26 Gbps of viewer-facing CDN delivery capacity under the stated 5,000-stream workload and 30% headroom assumption. Separately plan approximately 5.2 Gbps of origin delivery capacity under the assumed 80% CDN byte cache hit ratio and 30% origin headroom. Measure application-to-database traffic, cross-zone replication, backups, and monitoring traffic separately. Confirm interface, load-balancer, origin, and provider throughput limits before deployment."
-    },
-    {
-      "resource_category": "Transcoding workers",
-      "requirement": "For a video-on-demand service that performs transcoding, use 3 initial workers with 8 vCPU and 16 GiB RAM each as a provisional benchmark configuration, for a total of 24 vCPU and 48 GiB RAM. Autoscale according to queue depth, encoding throughput, and job deadlines. Set an initial target of less than 5 minutes of queue waiting time under normal workload. Final worker counts depend on incoming videos per hour, source duration and resolution, target encoding profiles, and measured encoding speed."
-    },
-    {
-      "resource_category": "Observability and monitoring",
-      "requirement": "Collect CPU, memory, API request rate, API p50/p95/p99 latency, database query latency, connection-pool usage, cache hit ratio, CDN egress, origin traffic, playback startup time, and rebuffering ratio. Collect resource metrics at 15–60-second intervals and evaluate operational alerts over 5-minute windows. Alert when application CPU exceeds 75% for 5 minutes, error rate exceeds 1% over 5 minutes, or API p95 exceeds 300 ms persistently. Retain application logs for an initial 30-day period and size log storage from measured daily ingestion volume."
-    },
-    {
-      "resource_category": "High availability and redundancy",
-      "requirement": "Run at least 3 application replicas distributed across 2 or more availability zones where supported. Deploy a database primary and standby across separate availability zones and configure automatic failover where available. Avoid single points of failure in critical ingress, cache, and origin dependencies. Use initial recovery objectives of RPO ≤ 15 minutes and RTO ≤ 60 minutes, subject to business approval and validation through failover exercises."
-    },
-    {
-      "resource_category": "Autoscaling",
-      "requirement": "Configure application autoscaling with a minimum of 3 replicas and an initial maximum of 12 replicas, each provisioned with 4 vCPU and 8 GiB RAM. Trigger scale-out when average CPU exceeds 65% for 5 minutes, memory exceeds 75%, or latency and request-queue metrics indicate sustained saturation. Use a lower scale-in threshold, such as CPU below 35% for 15 minutes, with stabilization and graceful draining. Adjust thresholds and maximum capacity after load testing."
-    },
-    {
-      "resource_category": "Backups and disaster recovery",
-      "requirement": "Perform automated database backups at least daily, retain backups for at least 7 days as an initial policy, and use point-in-time recovery where supported. Define RPO ≤ 15 minutes and RTO ≤ 60 minutes as initial targets. Verify backup completion daily, perform a restoration test at least monthly, and record recovery duration and data integrity. Protect media objects through appropriate versioning, replication, or backup policies based on their reconstructability and business importance."
-    },
-    {
-      "resource_category": "Compliance and security",
-      "requirement": "Enforce TLS 1.2 or newer for data in transit and encryption at rest for databases, object storage, and backups. Require MFA for privileged accounts, least-privilege access, managed secrets, and audit logging for privileged operations. Review access and security alerts at least daily and perform a documented access review at least quarterly. Identify applicable Indian and other relevant jurisdictional requirements before selecting data locations and retention policies; exact legal obligations and audit-retention periods depend on the service and applicable rules."
-    },
-    {
-      "resource_category": "Geographic content delivery",
-      "requirement": "Configure CDN coverage appropriate to Indian viewers, with routing and origin placement selected to meet an initial video startup latency target of p95 ≤ 2 seconds under representative network conditions. Monitor playback startup time, regional cache hit ratio, delivery errors, and origin latency separately. Validate performance from multiple Indian locations, network providers, device types, and peak traffic periods."
-    },
-    {
-      "resource_category": "Performance and capacity validation",
-      "requirement": "Run a sustained-load test for 5,000 concurrent streams at an assumed 4 Mbps average bitrate, corresponding to 20 Gbps peak payload bandwidth and an illustrative 26 Gbps delivery planning target with 30% headroom. Test a separate stress scenario of 6,250 concurrent streams, corresponding to 25 Gbps payload bandwidth, to evaluate burst tolerance. Validate API p95 ≤ 300 ms, API p99 ≤ 800 ms, playback startup p95 ≤ 2 seconds, rebuffering ratio below 1%, database failover, cache behavior, and recovery objectives. Finalize CPU, RAM, and replica counts from measured throughput and saturation points."
+      "Derived Metric": "application_compute_capacity",
+      "Value": "TBD",
+      "Computed From": "Cannot be determined from concurrent streams alone; requires measured API request rate, workload profile, and per-instance benchmark throughput",
+      "Drives": "Application CPU, memory, and replica count"
     }
   ]
 }
+```
 
 Final instruction:
-For every request, analyze the supplied specifications and relevant tool outputs, then produce a tailored capacity plan using this methodology. Use the examples to learn the reasoning pattern; do not copy their infrastructure values into unrelated workloads.
+For every request, analyze the supplied specifications and relevant tool outputs, then return only a `SizingTable`-shaped JSON object with a non-empty `rows` list. Use the examples to learn the reasoning pattern, not their output shape or infrastructure values.
+"""
+
+_COMPONENTS_PROMPT = """You are an expert Principal Cloud Solutions Architect specializing in AWS. Your sole objective is to analyze a system design requirement and translate it into a highly precise, deterministic component blueprint that perfectly balances technical trade-offs with budget realities.
+
+You will receive input data structured in three parts:
+1. Requirement Specification (JSON)
+2. Capacity Calculation Results (JSON)
+3. Retrieved Architecture Guidelines and cloud provider's documentation from MCP tools
+
+Your output must be a single, valid JSON object that strictly adheres to the `AwsDesign` schema. Do not include any conversational text, wrapping markdown blocks (except standard json validation), or introductory notes.
+
+---
+
+### ARCHITECTURAL BRAIN RULES
+
+1. SELECTION ONLY: Choose WHAT to buy (e.g., service, engine, instance type, architecture). NEVER estimate usage quantities, request counts, or total gigabytes. These are derived deterministically in downstream code from the capacity metrics.
+2. DISCRIMINATOR PATTERN: Every component in your array must contain a `service` literal key matching its schema definition (e.g., "ec2", "rds", "lambda", "fargate").
+3. BUDGET REALITY ADAPTATION: 
+   - If `monthly_budget_usd` is null or high, prioritize high-availability managed services (Amazon Aurora Serverless, AWS Lambda, Amazon EKS, CloudFront + WAF).
+   - If `monthly_budget_usd` is severely constrained (e.g., < \$100 for high DAU), bypass premium managed platforms. Pivot to bare-metal architectures using raw `ec2` instances with self-hosted open-source software (e.g., self-hosted Postgres, app processes in memory).
+4. STRICT ACID COMPLIANCE: If the `system_type` is a transactional system (like "ticket booking systems"), you MUST enforce ACID compliance at the storage tier using `rds` (PostgreSQL/MySQL) or explicit concurrency management.
+
+---
+
+### CITATION AND PROVENANCE RULES
+
+Every single component choice must be completely traceable. You must fill out two metadata fields per component:
+1. `rationale`: A concise 1-2 sentence justification explaining why this specific component configuration was chosen based on the throughput, region, or budget.
+2. `based_on`: An array of explicit string references using the regex pattern: `^(requirement|clarification|assumption|sizing|kb):[a-zA-Z0-9_\-\./]+$`.
+   - `requirement:<field>` -> reference fields inside `explicit_requirements` (e.g., `requirement:daily_active_users`)
+   - `clarification:<key>` -> reference exact keys from `clarifications`
+   - `assumption:<key>` -> reference exact keys from `assumptions`
+   - `sizing:<metric>` -> reference the `metric` string from the Capacity Results (e.g., `sizing:peak_booking_qps`)
+   - `kb:<doc_path>` -> reference the exact file path or identifier from the provided Knowledge Base Vector Chunks (e.g., `kb:aws-best-practices/rds_multi_az.md`)
+
+---
+
+### STRICT IDENTIFIER RULES
+You must rely entirely on the provided Vector DB Chunks and your internal knowledge for valid AWS nomenclature. Ensure all string values assigned to fields like `instance_type` (e.g., 'db.r7g.large') or `volume_type` (e.g., 'gp3') are structurally accurate and real AWS API identifiers. Do not invent or hallucinate instance class names.
+
+---
+
+### SCHEMA SCHEMA ENVELOPE REFERENCE
+
+Your output must follow this shape:
+{
+  "provider": "aws",
+  "components": [
+    {
+      "id": "string (unique unique component key)",
+      "service": "rds" | "ec2" | "fargate" | "lambda" | "cloudfront" | "elasticache" | "sqs" | "s3" | etc...,
+      "region": "string (e.g. ap-south-1)",
+      "rationale": "string (min 20 characters)",
+      "based_on": ["string matching reference pattern"],
+      ... (additional specific selection fields for that service as defined in the schema)
+    }
+  ]
+}
 """
 SYSTEM_PROMPTS = {
     "requirements": _REQUIREMENTS_PROMPT,
     "capacity_calculator_prompt": _CAPACITY_CALC_PROMPT,
+    "components_selection": _COMPONENTS_PROMPT,
 }
