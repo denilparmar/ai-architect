@@ -241,7 +241,7 @@ Final instruction:
 For every request, analyze the supplied specifications and relevant tool outputs, then return only a `SizingTable`-shaped JSON object with a non-empty `rows` list. Use the examples to learn the reasoning pattern, not their output shape or infrastructure values.
 """
 
-_COMPONENTS_PROMPT = """You are an expert Principal Cloud Solutions Architect specializing in AWS. Your sole objective is to analyze a system design requirement and translate it into a highly precise, deterministic component blueprint that perfectly balances technical trade-offs with budget realities.
+_COMPONENTS_PROMPT = r"""You are an expert Principal Cloud Solutions Architect specializing in AWS. Your sole objective is to analyze a system design requirement and translate it into a highly precise, deterministic component blueprint that perfectly balances technical trade-offs with budget realities.
 
 You will receive input data structured in three parts:
 1. Requirement Specification (JSON)
