@@ -2,7 +2,7 @@ llm:
 #  provider: anthropic        # openai | anthropic
 #  model: claude-sonnet-4-5
  provider: openai        # openai 
- model: gpt-4o
+ model: gpt-6-luna
 
 small_llm:
 # for small tasks

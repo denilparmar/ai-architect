@@ -8,13 +8,14 @@ Modules:
     requirements.py  RequirementSpec      (requirements agent)
     components.py    ComponentChoices     (component selection agent → cost estimation;
                                            AwsDesign, a per-service union on `service`)
+    capacity.py      SizingTable          (capacity modeling agent)
 Planned:
-    sizing.py        SizingTable          (capacity modeling agent)
-    cost.py          CostBreakdown        (cost estimation agent)
+    cost.py           CostBreakdown        (cost estimation agent)
     topology.py      TopologyGraph        (architecture composer agent)
     findings.py      Findings             (design critic agent)
 """
 
+from schemas.capacity import SizingRow, SizingTable
 from schemas.components import (
     AWS_SERVICES,
     AwsComponent,
@@ -43,6 +44,8 @@ __all__ = [
     "ComponentChoices",
     "ExplicitRequirements",
     "RequirementSpec",
+    "SizingRow",
+    "SizingTable",
     "SystemType",
     "unknown_references",
 ]
